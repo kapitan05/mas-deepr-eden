@@ -51,14 +51,49 @@ Installed **without** the `rl-art` extra — `torch`/`trl`/`peft`/
 doesn't eagerly pull in the heavy RL stack unless `mas_deepr.rl.*` is
 reached into directly).
 
+## The engine/plug-in split (confirmed, de-risks the architecture above)
+
+open-instruct is a generic, agent-agnostic distributed GRPO/DPO engine
+(Ray orchestration, vLLM rollout generation, DeepSpeed/FSDP gradient
+updates, DAPO/CISPO loss variants) — DR-Tulu is just one set of
+plug-ins registered against its generic extension points, not a fork or
+a bespoke trainer. This confirms the right scope of work here:
+
+**Don't rebuild**: `grpo_fast.py`/`grpo.py` (the training loop itself),
+`vllm_utils3.py` (rollout generation + weight sync), `rl_utils.py`/
+`grpo_utils.py` (advantage/loss math). Multi-month distributed-systems
+work, orthogonal to the actual research question, and not what this
+thesis is about.
+
+**Do build, as plug-ins against existing generic interfaces** — this is
+the real, scoped, genuinely-original work for this repo:
+- **Tool/environment**: likely close to zero new code —
+  `environments/tools/generic_mcp.py` talks to *any* MCP server already,
+  not just DR-Tulu's own. Point `--mcp_server_command` at mas-deepr's
+  own `run_mcp_server.py` directly. **First real test to run** once
+  both pieces are in place (de-risked by design, per the above, but
+  tool *names* mas-deepr uses (`wikipedia_search`, etc.) vs. whatever
+  a `VerifierFunction` expects still need checking — see below).
+- **Reward — `VerifierFunction` subclass**: this is the one genuinely
+  project-specific piece, and it's already half-built in `mas-deepr`:
+  port `rl/rubric_reward.py`'s LLM-as-judge rubric-compliance scoring
+  (+ the turn-count/hallucination penalties) into open-instruct's
+  `VerifierFunction` interface (`ground_truth_utils.py`'s registry).
+  This is real, original thesis work — not reused from DR-Tulu or
+  anyone else.
+- **Data/system prompts**: dataset schema + tool-calling system prompt
+  are also genuinely project-specific — adapt `mas_deepr.data`'s
+  benchmark loaders and `mas_deepr.prompts`' templates to whatever
+  format open-instruct's data pipeline expects, rather than writing
+  either from scratch.
+
 ## What's not done yet
 
 `sft/llama-factory/` and `rl/open-instruct/` are empty placeholders —
 to be cloned in directly (per the Eden plan's Phase 3) once on a
 machine with real GPU access; not installed on a laptop. The MCP
-tool-backend compatibility between mas-deepr's server and open-instruct's
-`--mcp_server_command` flag is unverified — first real test to run once
-both pieces are in place.
+tool-backend first-contact test (above) and the `VerifierFunction`
+reward port are the two concrete next pieces of real work.
 
 See `mas-deepr`'s `docs/plan/team-task-split-2026-10.md` (local-only,
 not in git) for the fuller context/task breakdown this repo exists to
